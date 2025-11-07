@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Сотрудники</title>
+</head>
+<body>
+    <h1>Сотрудники</h1>
+    <a href="/web/">Назад</a>
+
+    {% if employees %}
+    <table border="1">
+        <tr>
+            <th>ID</th>
+            <th>ФИО</th>
+            <th>Дата рождения</th>
+            <th>Email</th>
+            <th>Телефон</th>
+            <th>Дата приема</th>
+            <th>Зарплата</th>
+            <th>Отдел</th>
+            <th>Должность</th>
+            <th>Статус</th>
+        </tr>
+        {% for e in employees %}
+        <tr>
+            <td>{{ e.id }}</td>
+            <td>{{ e.last_name }} {{ e.first_name }} {{ e.middle_name or '' }}</td>
+            <td>{{ e.birth_date }}</td>
+            <td>{{ e.email or '-' }}</td>
+            <td>{{ e.phone or '-' }}</td>
+            <td>{{ e.hire_date }}</td>
+            <td>{{ e.salary }}</td>
+            <td>{{ e.department_name or '-' }}</td>
+            <td>{{ e.position_title or '-' }}</td>
+            <td>{% if e.status_id == 1 %}Активен{% else %}Неактивен{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% else %}
+    <p>Нет сотрудников</p>
+    {% endif %}
+</body>
+</html>

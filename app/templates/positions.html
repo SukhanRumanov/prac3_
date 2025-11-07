@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Должности</title>
+</head>
+<body>
+    <h1>Должности</h1>
+    <a href="/web/">Назад</a>
+
+    {% if positions %}
+    <table border="1">
+        <tr>
+            <th>ID</th>
+            <th>Название</th>
+            <th>Описание</th>
+            <th>Базовая зарплата</th>
+            <th>Кол-во сотрудников</th>
+        </tr>
+        {% for p in positions %}
+        <tr>
+            <td>{{ p.id }}</td>
+            <td>{{ p.title }}</td>
+            <td>{{ p.description or '-' }}</td>
+            <td>{{ p.base_salary }}</td>
+            <td>{{ p.employee_count }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% else %}
+    <p>Нет должностей</p>
+    {% endif %}
+</body>
+</html>

@@ -1,0 +1,22 @@
+<html>
+<head><title>Отделы</title></head>
+<body>
+    <h1>Отделы</h1>
+    <a href="/web/">Назад</a>
+
+    {% if departments %}
+    <table border="1">
+        <tr><th>ID</th><th>Название</th><th>Описание</th></tr>
+        {% for d in departments %}
+        <tr>
+            <td>{{ d.id }}</td>
+            <td>{{ d.name }}</td>
+            <td>{{ d.description or '-' }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% else %}
+    <p>Нет отделов</p>
+    {% endif %}
+</body>
+</html>
