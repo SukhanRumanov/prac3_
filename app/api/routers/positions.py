@@ -8,6 +8,10 @@ from app.schemas.position import PositionSchema, PositionCreate, PositionUpdate
 from app.api.dependencies import get_current_user_optional, get_current_superuser
 from app.schemas.base import DefaultResponse
 
+from app.logger.logger import setup_logger
+
+logger = setup_logger(__name__)
+
 router = APIRouter(prefix="/positions", tags=["positions"])
 
 
@@ -18,6 +22,8 @@ async def get_positions(
         limit: int = 100
 ):
     try:
+        logger.info(f"Запрос на получение списка должностей (skip: {skip}, limit: {limit})")
+
         result = await db.execute(
             select(
                 Position,
@@ -40,12 +46,14 @@ async def get_positions(
                 employee_count=emp_count
             ))
 
+        logger.info(f"Успешно получено {len(positions)} должностей")
         return DefaultResponse(
             error=False,
             message="Positions retrieved successfully",
             payload=positions
         )
     except Exception as e:
+        logger.error(f"Ошибка при получении списка должностей: {str(e)}")
         return DefaultResponse(
             error=True,
             message=f"Error retrieving positions: {str(e)}",
@@ -56,6 +64,8 @@ async def get_positions(
 @router.get("/{position_id}", response_model=DefaultResponse)
 async def get_position(position_id: int, db: AsyncSession = Depends(get_db)):
     try:
+        logger.info(f"Запрос на получение должности с ID: {position_id}")
+
         result = await db.execute(
             select(
                 Position,
@@ -68,6 +78,7 @@ async def get_position(position_id: int, db: AsyncSession = Depends(get_db)):
         position_data = result.first()
 
         if not position_data:
+            logger.warning(f"Должность с ID {position_id} не найдена")
             return DefaultResponse(
                 error=True,
                 message="Position not found",
@@ -83,12 +94,14 @@ async def get_position(position_id: int, db: AsyncSession = Depends(get_db)):
             employee_count=emp_count
         )
 
+        logger.info(f"Успешно получена должность: {position.title} (ID: {position.id})")
         return DefaultResponse(
             error=False,
             message="Position retrieved successfully",
             payload=position_schema
         )
     except Exception as e:
+        logger.error(f"Ошибка при получении должности с ID {position_id}: {str(e)}")
         return DefaultResponse(
             error=True,
             message=f"Error retrieving position: {str(e)}",
@@ -103,6 +116,9 @@ async def create_position(
         current_user: dict = Depends(get_current_superuser)
 ):
     try:
+        logger.info(f"Запрос на создание новой должности: {position_data.title}")
+        logger.debug(f"Данные для создания должности: {position_data.model_dump()}")
+
         position = Position(**position_data.model_dump())
         db.add(position)
         await db.commit()
@@ -116,12 +132,14 @@ async def create_position(
             employee_count=0
         )
 
+        logger.info(f"Успешно создана новая должность: {position.title} (ID: {position.id})")
         return DefaultResponse(
             error=False,
             message="Position created successfully",
             payload=position_schema
         )
     except Exception as e:
+        logger.error(f"Ошибка при создании должности '{position_data.title}': {str(e)}")
         await db.rollback()
         return DefaultResponse(
             error=True,
@@ -138,10 +156,14 @@ async def update_position(
         current_user: dict = Depends(get_current_superuser)
 ):
     try:
+        logger.info(f"Запрос на обновление должности с ID: {position_id}")
+        logger.debug(f"Данные для обновления: {position_data.model_dump(exclude_unset=True)}")
+
         result = await db.execute(select(Position).where(Position.id == position_id))
         position = result.scalar_one_or_none()
 
         if not position:
+            logger.warning(f"Должность с ID {position_id} не найдена для обновления")
             return DefaultResponse(
                 error=True,
                 message="Position not found",
@@ -169,12 +191,14 @@ async def update_position(
             employee_count=emp_count
         )
 
+        logger.info(f"Успешно обновлена должность: {position.title} (ID: {position.id})")
         return DefaultResponse(
             error=False,
             message="Position updated successfully",
             payload=position_schema
         )
     except Exception as e:
+        logger.error(f"Ошибка при обновлении должности с ID {position_id}: {str(e)}")
         await db.rollback()
         return DefaultResponse(
             error=True,
@@ -190,10 +214,13 @@ async def delete_position(
         current_user: dict = Depends(get_current_superuser)
 ):
     try:
+        logger.info(f"Запрос на удаление должности с ID: {position_id}")
+
         result = await db.execute(select(Position).where(Position.id == position_id))
         position = result.scalar_one_or_none()
 
         if not position:
+            logger.warning(f"Должность с ID {position_id} не найдена для удаления")
             return DefaultResponse(
                 error=True,
                 message="Position not found",
@@ -207,6 +234,8 @@ async def delete_position(
         emp_count = result.scalar()
 
         if emp_count > 0:
+            logger.warning(
+                f"Попытка удаления должности {position.title} (ID: {position_id}) с {emp_count} сотрудниками")
             return DefaultResponse(
                 error=True,
                 message=f"Cannot delete position with {emp_count} employees",
@@ -216,12 +245,14 @@ async def delete_position(
         await db.delete(position)
         await db.commit()
 
+        logger.info(f"Успешно удалена должность: {position.title} (ID: {position_id})")
         return DefaultResponse(
             error=False,
             message="Position deleted successfully",
             payload=None
         )
     except Exception as e:
+        logger.error(f"Ошибка при удалении должности с ID {position_id}: {str(e)}")
         await db.rollback()
         return DefaultResponse(
             error=True,

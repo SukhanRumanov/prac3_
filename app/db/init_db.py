@@ -1,6 +1,8 @@
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from app.models import Base, Department, Position, Status, Skill, User
 from app.db.session import engine
+from app.core.security import get_password_hash
 
 
 async def create_tables():
@@ -9,6 +11,12 @@ async def create_tables():
 
 
 async def init_data(session: AsyncSession):
+    result = await session.execute(select(Department).limit(1))
+    existing_data = result.scalar_one_or_none()
+
+    if existing_data:
+        return
+
     statuses = [
         Status(name="работает"),
         Status(name="в отпуске"),
@@ -43,13 +51,13 @@ async def init_data(session: AsyncSession):
         User(
             username="admin",
             email="admin@company.com",
-            hashed_password="admin123",
+            hashed_password=get_password_hash("admin123"),
             is_superuser=True
         ),
         User(
             username="user",
             email="user@company.com",
-            hashed_password="user123",
+            hashed_password=get_password_hash("user123"),
             is_superuser=False
         ),
     ]

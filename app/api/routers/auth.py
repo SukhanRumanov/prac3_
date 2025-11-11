@@ -7,44 +7,82 @@ from app.schemas.auth import UserLogin, Token
 from app.api.dependencies import get_current_user_optional
 from app.core.security import verify_password, create_access_token
 from app.schemas.base import DefaultResponse
+from app.logger.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/login", response_model=Token)
 async def login(user_data: UserLogin, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).where(User.username == user_data.username))
-    user = result.scalar_one_or_none()
+    try:
+        logger.info(f"Попытка входа пользователя: {user_data.username}")
 
-    if not user or not verify_password(user_data.password, user.hashed_password):
+        result = await db.execute(select(User).where(User.username == user_data.username))
+        user = result.scalar_one_or_none()
+
+        if not user:
+            logger.warning(f"Пользователь не найден: {user_data.username}")
+            return DefaultResponse(
+                error=True,
+                message="Invalid credentials",
+                payload=None
+            )
+
+        if not verify_password(user_data.password, user.hashed_password):
+            logger.warning(f"Неверный пароль для пользователя: {user_data.username}")
+            return DefaultResponse(
+                error=True,
+                message="Invalid credentials",
+                payload=None
+            )
+
+        if not user.is_active:
+            logger.warning(f"Попытка входа неактивного пользователя: {user_data.username}")
+            return DefaultResponse(
+                error=True,
+                message="Inactive user",
+                payload=None
+            )
+
+        access_token = create_access_token(data={"sub": user.username})
+        logger.info(f"Успешный вход пользователя: {user_data.username} (ID: {user.id})")
+
+        return Token(access_token=access_token, token_type="bearer")
+
+    except Exception as e:
+        logger.error(f"Ошибка при входе пользователя {user_data.username}: {str(e)}")
         return DefaultResponse(
             error=True,
-            message="Invalid credentials",
+            message=f"Login error: {str(e)}",
             payload=None
         )
-
-    if not user.is_active:
-        return DefaultResponse(
-            error=True,
-            message="Inactive user",
-            payload=None
-        )
-
-    access_token = create_access_token(data={"sub": user.username})
-    return Token(access_token=access_token, token_type="bearer")
 
 
 @router.get("/me", response_model=DefaultResponse)
 async def read_users_me(current_user: dict = Depends(get_current_user_optional)):
-    if not current_user:
+    try:
+        if not current_user:
+            logger.debug("Запрос информации о пользователе: пользователь не аутентифицирован")
+            return DefaultResponse(
+                error=True,
+                message="User not authenticated",
+                payload=None
+            )
+
+        logger.debug(f"Запрос информации о пользователе: {current_user.username} (ID: {current_user.id})")
+
         return DefaultResponse(
-            error=True,
-            message="User not authenticated",
-            payload=None
+            error=False,
+            message="Success",
+            payload=current_user
         )
 
-    return DefaultResponse(
-        error=False,
-        message="Success",
-        payload=current_user
-    )
+    except Exception as e:
+        logger.error(f"Ошибка при получении информации о пользователе: {str(e)}")
+        return DefaultResponse(
+            error=True,
+            message=f"Error retrieving user info: {str(e)}",
+            payload=None
+        )
