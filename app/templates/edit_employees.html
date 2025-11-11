@@ -1,0 +1,147 @@
+<html>
+<head>
+    <title>Сотрудники</title>
+</head>
+<body>
+    <h1>Сотрудники</h1>
+    <a href="/web/edit">Назад</a>
+
+    <h2>Добавить сотрудника</h2>
+    <form method="post" action="/web/edit/employees/add">
+        <p>Имя</p>
+        <input type="text" name="first_name" placeholder="Имя" required>
+
+        <p>Фамилия</p>
+        <input type="text" name="last_name" placeholder="Фамилия" required>
+
+        <p>Отчество</p>
+        <input type="text" name="middle_name" placeholder="Отчество">
+
+        <p>Дата рождения</p>
+        <input type="date" name="birth_date" required>
+
+        <p>Дата приёма на работу</p>
+        <input type="date" name="hire_date" required>
+
+        <p>Зарплата</p>
+        <input type="number" name="salary" step="0.01" placeholder="Зарплата" required>
+
+        <p>Ставка (например, 1.0 = полная ставка)</p>
+        <input type="number" name="rate" step="0.1" value="1.0" placeholder="Ставка">
+
+        <p>Email</p>
+        <input type="email" name="email" placeholder="Email" required>
+
+        <p>Телефон</p>
+        <input type="text" name="phone" placeholder="Телефон">
+
+        <p>Адрес</p>
+        <textarea name="address" placeholder="Адрес"></textarea>
+
+        <p>Отдел</p>
+        <select name="department_id">
+            <option value="">Отдел</option>
+            {% for dept in departments %}
+            <option value="{{ dept.id }}">{{ dept.name }}</option>
+            {% endfor %}
+        </select>
+
+        <p>Должность</p>
+        <select name="position_id">
+            <option value="">Должность</option>
+            {% for pos in positions %}
+            <option value="{{ pos.id }}">{{ pos.title }}</option>
+            {% endfor %}
+        </select>
+
+        <p>Статус (например, «работает», «уволен» и т.п.)</p>
+        <select name="status_id" required>
+            <option value="">Статус</option>
+            {% for status in statuses %}
+            <option value="{{ status.id }}">{{ status.name }}</option>
+            {% endfor %}
+        </select>
+
+        <p>Добавить сотрудника</p>
+        <button type="submit">Добавить</button>
+    </form>
+
+    <h2>Список сотрудников</h2>
+    <table border="1">
+        <tr>
+            <th>ID</th>
+            <th>ФИО</th>
+            <th>Email</th>
+            <th>Телефон</th>
+            <th>Отдел</th>
+            <th>Должность</th>
+            <th>Статус</th>
+            <th>Действия</th>
+        </tr>
+        {% for employee in employees %}
+        <tr>
+            <td>{{ employee.id }}</td>
+            <td>
+                <form method="post" action="/web/edit/employees/update/{{ employee.id }}" style="display: inline;">
+                    <p>Имя</p>
+                    <input type="text" name="first_name" value="{{ employee.first_name }}" required>
+                    <p>Фамилия</p>
+                    <input type="text" name="last_name" value="{{ employee.last_name }}" required>
+                    <p>Отчество</p>
+                    <input type="text" name="middle_name" value="{{ employee.middle_name or '' }}">
+            </td>
+            <td>
+                <p>Email</p>
+                <input type="email" name="email" value="{{ employee.email }}" required>
+            </td>
+            <td>
+                <p>Телефон</p>
+                <input type="text" name="phone" value="{{ employee.phone or '' }}">
+            </td>
+            <td>
+                <p>Отдел</p>
+                <select name="department_id">
+                    <option value="">--</option>
+                    {% for dept in departments %}
+                    <option value="{{ dept.id }}" {% if employee.department_id == dept.id %}selected{% endif %}>
+                        {{ dept.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </td>
+            <td>
+                <p>Должность</p>
+                <select name="position_id">
+                    <option value="">--</option>
+                    {% for pos in positions %}
+                    <option value="{{ pos.id }}" {% if employee.position_id == pos.id %}selected{% endif %}>
+                        {{ pos.title }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </td>
+            <td>
+                <p>Статус</p>
+                <select name="status_id" required>
+                    {% for status in statuses %}
+                    <option value="{{ status.id }}" {% if employee.status_id == status.id %}selected{% endif %}>
+                        {{ status.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </td>
+            <td>
+                <p>Обновить данные сотрудника</p>
+                <button type="submit">Обновить</button>
+                </form>
+
+                <p>Удалить сотрудника</p>
+                <form method="post" action="/web/edit/employees/delete/{{ employee.id }}" style="display: inline;">
+                    <button type="submit" onclick="return confirm('Удалить?')">Удалить</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>
