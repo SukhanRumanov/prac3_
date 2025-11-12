@@ -6,7 +6,7 @@ services:
     container_name: postgres_container
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD:
+      POSTGRES_PASSWORD: 123456
       POSTGRES_DB: employee_db
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
@@ -40,13 +40,8 @@ services:
   app:
     build: .
     container_name: prac3_app
-    environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:@postgres:5432/employee_db
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: employee_db
-      DB_USER: postgres
-      DB_PASSWORD:
+    env_file:
+      - .env  # Load environment variables from .env file
     ports:
       - "8000:8000"
     depends_on:
