@@ -1,0 +1,46 @@
+<html>
+<head><title>Отделы</title></head>
+<body>
+    <h1>Отделы</h1>
+    <a href="/web/edit">Назад</a>
+
+    <h2>Добавить отдел</h2>
+    <form method="post" action="/web/edit/departments/add">
+        <input type="text" name="name" placeholder="Название" required>
+        <input type="text" name="description" placeholder="Описание">
+        <button type="submit">Добавить</button>
+    </form>
+
+    <h2>Список отделов</h2>
+    <table border="1">
+        <tr>
+            <th>ID</th>
+            <th>Название</th>
+            <th>Описание</th>
+            <th>Сотрудников</th>
+            <th>Действия</th>
+        </tr>
+        {% for dept in departments %}
+        <tr>
+            <td>{{ dept.id }}</td>
+            <td>
+                <form method="post" action="/web/edit/departments/update/{{ dept.id }}" style="display: inline;">
+                    <input type="text" name="name" value="{{ dept.name }}" required>
+            </td>
+            <td>
+                <input type="text" name="description" value="{{ dept.description or '' }}">
+            </td>
+            <td>{{ dept.employee_count }}</td>
+            <td>
+                <button type="submit">Обновить</button>
+                </form>
+
+                <form method="post" action="/web/edit/departments/delete/{{ dept.id }}" style="display: inline;">
+                    <button type="submit" {% if dept.employee_count > 0 %}disabled{% endif %} onclick="return confirm('Удалить отдел?')">Удалить</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>

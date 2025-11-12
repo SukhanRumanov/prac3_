@@ -1,0 +1,51 @@
+<html>
+<head><title>Должности</title></head>
+<body>
+    <h1>Должности</h1>
+    <a href="/web/edit">Назад</a>
+
+    <h2>Добавить должность</h2>
+    <form method="post" action="/web/edit/positions/add">
+        <input type="text" name="title" placeholder="Название" required>
+        <input type="text" name="description" placeholder="Описание">
+        <input type="number" name="base_salary" placeholder="Зарплата" step="0.01" required>
+        <button type="submit">Добавить</button>
+    </form>
+
+    <h2>Список должностей</h2>
+    <table border="1">
+        <tr>
+            <th>ID</th>
+            <th>Название</th>
+            <th>Описание</th>
+            <th>Зарплата</th>
+            <th>Сотрудников</th>
+            <th>Действия</th>
+        </tr>
+        {% for pos in positions %}
+        <tr>
+            <td>{{ pos.id }}</td>
+            <td>
+                <form method="post" action="/web/edit/positions/update/{{ pos.id }}" style="display: inline;">
+                    <input type="text" name="title" value="{{ pos.title }}" required>
+            </td>
+            <td>
+                <input type="text" name="description" value="{{ pos.description or '' }}">
+            </td>
+            <td>
+                <input type="number" name="base_salary" value="{{ pos.base_salary }}" step="0.01" required>
+            </td>
+            <td>{{ pos.employee_count }}</td>
+            <td>
+                <button type="submit">Обновить</button>
+                </form>
+
+                <form method="post" action="/web/edit/positions/delete/{{ pos.id }}" style="display: inline;">
+                    <button type="submit" {% if pos.employee_count > 0 %}disabled{% endif %} onclick="return confirm('Удалить должность?')">Удалить</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>

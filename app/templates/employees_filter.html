@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Фильтр сотрудников</title>
+    <style>
+        body { font-family: Arial; margin: 20px; }
+        .filters { background: #f5f5f5; padding: 15px; margin-bottom: 20px; }
+        .filter-group { margin-bottom: 10px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background: #f0f0f0; }
+        .pagination { margin-top: 15px; }
+    </style>
+</head>
+<body>
+    <h1>Фильтр сотрудников</h1>
+
+    <div class="filters">
+        <form method="get">
+            <div class="filter-group">
+                <input type="text" name="search" value="{{ filters.search or '' }}" placeholder="Поиск по ФИО">
+            </div>
+
+            <div class="filter-group">
+                <select name="department_id">
+                    <option value="">Все отделы</option>
+                    {% for dept in departments %}
+                    <option value="{{ dept.id }}" {% if filters.department_id == dept.id %}selected{% endif %}>
+                        {{ dept.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+
+                <select name="position_id">
+                    <option value="">Все должности</option>
+                    {% for pos in positions %}
+                    <option value="{{ pos.id }}" {% if filters.position_id == pos.id %}selected{% endif %}>
+                        {{ pos.title }}
+                    </option>
+                    {% endfor %}
+                </select>
+
+                <select name="status_id">
+                    <option value="">Все статусы</option>
+                    {% for status in statuses %}
+                    <option value="{{ status.id }}" {% if filters.status_id == status.id %}selected{% endif %}>
+                        {{ status.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <input type="date" name="hire_date_from" value="{{ filters.hire_date_from or '' }}" placeholder="Дата от">
+                <input type="date" name="hire_date_to" value="{{ filters.hire_date_to or '' }}" placeholder="Дата до">
+            </div>
+
+            <div class="filter-group">
+                <input type="number" name="salary_from" value="{{ filters.salary_from or '' }}" placeholder="Зарплата от">
+                <input type="number" name="salary_to" value="{{ filters.salary_to or '' }}" placeholder="Зарплата до">
+            </div>
+
+            <button type="submit">Применить</button>
+            <a href="/web/employees/filter">Сбросить</a>
+        </form>
+    </div>
+
+    <div>Найдено: {{ total }} сотрудников</div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>ФИО</th>
+                <th>Отдел</th>
+                <th>Должность</th>
+                <th>Статус</th>
+                <th>Дата приема</th>
+                <th>Зарплата</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for emp in employees %}
+            <tr>
+                <td>{{ emp.full_name }}</td>
+                <td>{{ emp.department_name }}</td>
+                <td>{{ emp.position_title }}</td>
+                <td>{{ emp.status_name }}</td>
+                <td>{{ emp.hire_date }}</td>
+                <td>{{ emp.salary }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    {% if pages > 1 %}
+    <div class="pagination">
+        {% if page > 1 %}
+        <a href="?page={{ page-1 }}&size={{ size }}{% for key, value in filters.items() if value %}&{{ key }}={{ value }}{% endfor %}">← Назад</a>
+        {% endif %}
+
+        <span>Страница {{ page }} из {{ pages }}</span>
+
+        {% if page < pages %}
+        <a href="?page={{ page+1 }}&size={{ size }}{% for key, value in filters.items() if value %}&{{ key }}={{ value }}{% endfor %}">Вперед →</a>
+        {% endif %}
+    </div>
+    {% endif %}
+</body>
+</html>
