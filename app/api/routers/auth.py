@@ -4,10 +4,12 @@ from sqlalchemy import select
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.auth import UserLogin, Token
-from app.api.dependencies import get_current_user_optional
+from app.core.security import get_current_user_optional
 from app.core.security import verify_password, create_access_token
 from app.schemas.base import DefaultResponse
 from app.logger.logger import setup_logger
+from app.services.auth_service import login_user
+from app.schemas.auth import Token
 
 logger = setup_logger(__name__)
 
@@ -19,37 +21,9 @@ async def login(user_data: UserLogin, db: AsyncSession = Depends(get_db)):
     try:
         logger.info(f"Попытка входа пользователя: {user_data.username}")
 
-        result = await db.execute(select(User).where(User.username == user_data.username))
-        user = result.scalar_one_or_none()
+        result = await login_user(db, user_data.username, user_data.password)
 
-        if not user:
-            logger.warning(f"Пользователь не найден: {user_data.username}")
-            return DefaultResponse(
-                error=True,
-                message="Invalid credentials",
-                payload=None
-            )
-
-        if not verify_password(user_data.password, user.hashed_password):
-            logger.warning(f"Неверный пароль для пользователя: {user_data.username}")
-            return DefaultResponse(
-                error=True,
-                message="Invalid credentials",
-                payload=None
-            )
-
-        if not user.is_active:
-            logger.warning(f"Попытка входа неактивного пользователя: {user_data.username}")
-            return DefaultResponse(
-                error=True,
-                message="Inactive user",
-                payload=None
-            )
-
-        access_token = create_access_token(data={"sub": user.username})
-        logger.info(f"Успешный вход пользователя: {user_data.username} (ID: {user.id})")
-
-        return Token(access_token=access_token, token_type="bearer")
+        return result
 
     except Exception as e:
         logger.error(f"Ошибка при входе пользователя {user_data.username}: {str(e)}")

@@ -6,6 +6,7 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import joinedload
 from datetime import datetime
 from typing import Optional
+from app.schemas.employee import EmployeeCreate
 
 from app.db.session import get_db
 from app.models.employee import Employee
@@ -13,6 +14,9 @@ from app.models.department import Department
 from app.models.position import Position
 from app.models.status import Status
 from app.core.security import require_admin
+from app.services.department_service import DepartmentService, DepartmentCreate
+from app.services.employee_service import EmployeeService
+from app.services.position_service import PositionService, PositionUpdate, PositionCreate
 
 templates = Jinja2Templates(directory="app/templates")
 
@@ -38,62 +42,73 @@ async def web_edit(
 
 @router.get("/edit/employees", response_class=HTMLResponse)
 async def web_edit_employees(
-        request: Request,
-        db: AsyncSession = Depends(get_db),
-        current_user=Depends(require_admin)
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_admin)
 ):
     if current_user is None:
         logger.warning("Not logged in")
         return RedirectResponse(url="/web/login", status_code=302)
 
-    result = await db.execute(
-        select(Employee)
-        .options(
-            joinedload(Employee.department),
-            joinedload(Employee.position),
-            joinedload(Employee.status)
+    try:
+        employee_service = EmployeeService(db)
+        employees_data = await employee_service.get_employees_for_web()
+
+        department_service = DepartmentService(db)
+        departments_result = await department_service.get_all_departments(skip=0, limit=1000)
+        departments = departments_result.payload if departments_result.payload else []
+
+        pos_result = await db.execute(select(Position))
+        positions = pos_result.scalars().all()
+
+        status_result = await db.execute(select(Status))
+        statuses = status_result.scalars().all()
+
+        logger.info(f"Загружено {len(employees_data)} сотрудников, {len(departments)} отделов, {len(positions)} должностей, {len(statuses)} статусов")
+
+        return templates.TemplateResponse(
+            "edit_employees.html",
+            {
+                "request": request,
+                "employees": employees_data,
+                "departments": departments,
+                "positions": positions,
+                "statuses": statuses
+            }
         )
-    )
-    employees = result.unique().scalars().all()
-    dept_result = await db.execute(select(Department))
-    departments = dept_result.scalars().all()
 
-    pos_result = await db.execute(select(Position))
-    positions = pos_result.scalars().all()
-
-    status_result = await db.execute(select(Status))
-    statuses = status_result.scalars().all()
-
-    return templates.TemplateResponse(
-        "edit_employees.html",
-        {
-            "request": request,
-            "employees": employees,
-            "departments": departments,
-            "positions": positions,
-            "statuses": statuses
-        }
-    )
-
+    except Exception as e:
+        logger.error(f"Ошибка при загрузке страницы редактирования сотрудников: {str(e)}")
+        return templates.TemplateResponse(
+            "edit_employees.html",
+            {
+                "request": request,
+                "employees": [],
+                "departments": [],
+                "positions": [],
+                "statuses": [],
+                "error": "Ошибка при загрузке данных"
+            }
+        )
 
 @router.post("/edit/employees/add")
 async def web_add_employee(
-        request: Request,
-        first_name: str = Form(...),
-        last_name: str = Form(...),
-        middle_name: str = Form(None),
-        email: str = Form(...),
-        phone: str = Form(None),
-        birth_date: str = Form(...),
-        hire_date: str = Form(...),
-        salary: float = Form(...),
-        rate: float = Form(default=1.0),
-        department_id: int = Form(None),
-        position_id: int = Form(None),
-        status_id: int = Form(...),
-        address: str = Form(None),
-        db: AsyncSession = Depends(get_db),
-        current_user=Depends(require_admin)
+    request: Request,
+    first_name: str = Form(...),
+    last_name: str = Form(...),
+    middle_name: str = Form(None),
+    email: str = Form(...),
+    phone: str = Form(None),
+    birth_date: str = Form(...),
+    hire_date: str = Form(...),
+    salary: float = Form(...),
+    rate: float = Form(default=1.0),
+    department_id: int = Form(None),
+    position_id: int = Form(None),
+    status_id: int = Form(...),
+    address: str = Form(None),
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_admin)
 ):
     if current_user is None:
         logger.warning("Not logged in")
@@ -103,7 +118,7 @@ async def web_add_employee(
         birth_date_obj = datetime.strptime(birth_date, "%Y-%m-%d").date()
         hire_date_obj = datetime.strptime(hire_date, "%Y-%m-%d").date()
 
-        employee = Employee(
+        employee_data = EmployeeCreate(
             first_name=first_name,
             last_name=last_name,
             middle_name=middle_name,
@@ -119,82 +134,98 @@ async def web_add_employee(
             address=address
         )
 
-        db.add(employee)
-        await db.commit()
-        await db.refresh(employee)
-        logger.info(f"Сотрудник добавлен с ID: {employee.id}")
+        employee_service = EmployeeService(db)
+        result = await employee_service.create_employee(employee_data)
 
+        if result.error:
+            logger.warning(f"Ошибка при добавлении сотрудника: {result.message}")
+            return RedirectResponse(
+                url=f"/web/edit/employees?error={result.message}",
+                status_code=303
+            )
+
+        logger.info(f"Сотрудник добавлен с ID: {result.payload.id if result.payload else 'unknown'}")
         return RedirectResponse(url="/web/edit/employees", status_code=303)
 
     except Exception as e:
-        await db.rollback()
-        logger.error("ошибка при добавление")
-        return RedirectResponse(url=f"/web/edit/employees?error={str(e)}", status_code=303)
+        logger.error(f"Неожиданная ошибка при добавлении сотрудника: {str(e)}")
+        return RedirectResponse(
+            url=f"/web/edit/employees?error=Unexpected error: {str(e)}",
+            status_code=303
+        )
 
 @router.post("/edit/employees/delete/{employee_id}")
 async def web_delete_employee(
-        employee_id: int,
-        request: Request,
-        db: AsyncSession = Depends(get_db),
-        current_user=Depends(require_admin)
+    employee_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_admin)
 ):
     if current_user is None:
         logger.warning("Not logged in")
         return RedirectResponse(url="/web/login", status_code=302)
 
     try:
-        result = await db.execute(select(Employee).where(Employee.id == employee_id))
-        employee = result.scalar_one_or_none()
+        employee_service = EmployeeService(db)
+        result = await employee_service.delete_employee(employee_id)
 
-        if employee:
-            await db.delete(employee)
-            await db.commit()
-            logger.info("удален работник")
+        if result.error:
+            logger.warning(f"Ошибка при удалении сотрудника {employee_id}: {result.message}")
+            return RedirectResponse(
+                url=f"/web/edit/employees?error={result.message}",
+                status_code=303
+            )
 
+        logger.info(f"Успешно удален сотрудник ID {employee_id}")
         return RedirectResponse(url="/web/edit/employees", status_code=303)
+
     except Exception as e:
-        logger.error(e)
-        await db.rollback()
-        return RedirectResponse(url="/web/edit/employees?error=" + str(e), status_code=303)
+        logger.error(f"Неожиданная ошибка при удалении сотрудника {employee_id}: {str(e)}")
+        return RedirectResponse(
+            url=f"/web/edit/employees?error=Unexpected error: {str(e)}",
+            status_code=303
+        )
 
 
 @router.get("/edit/departments", response_class=HTMLResponse)
 async def web_edit_departments(
-        request: Request,
-        db: AsyncSession = Depends(get_db),
-        current_user=Depends(require_admin)
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_admin)
 ):
     if current_user is None:
-        logger.warning("Not logged in")
+        logger.warning("Попытка доступа к редактированию департаментов без авторизации")
         return RedirectResponse(url="/web/login", status_code=302)
 
-    result = await db.execute(
-        select(
-            Department,
-            func.count(Employee.id).label('employee_count')
+    try:
+        logger.info(f"Запрос на страницу редактирования департаментов от пользователя: {current_user.username}")
+
+        service = DepartmentService(db)
+        departments_data = await service.get_departments_for_web()
+
+        logger.info(f"Успешно загружено {len(departments_data)} департаментов для редактирования")
+
+        return templates.TemplateResponse(
+            "edit_departments.html",
+            {
+                "request": request,
+                "departments": departments_data,
+                "current_user": current_user
+            }
         )
-        .outerjoin(Employee, Department.id == Employee.department_id)
-        .group_by(Department.id)
-    )
-    departments_with_count = result.all()
-    logger.info("данные изменены")
 
-    departments = []
-    for dept, emp_count in departments_with_count:
-        departments.append({
-            "id": dept.id,
-            "name": dept.name,
-            "description": dept.description,
-            "employee_count": emp_count
-        })
+    except Exception as e:
+        logger.error(f"Ошибка при загрузке страницы редактирования департаментов: {str(e)}")
+        return templates.TemplateResponse(
+            "edit_departments.html",
+            {
+                "request": request,
+                "departments": [],
+                "current_user": current_user,
+                "error": "Произошла ошибка при загрузке данных"
+            }
+        )
 
-    return templates.TemplateResponse(
-        "edit_departments.html",
-        {
-            "request": request,
-            "departments": departments
-        }
-    )
 
 @router.post("/edit/departments/add")
 async def web_add_department(
@@ -205,25 +236,33 @@ async def web_add_department(
         current_user=Depends(require_admin)
 ):
     if current_user is None:
-        logger.warning("Not logged in")
+        logger.warning("Попытка добавления департамента без авторизации")
         return RedirectResponse(url="/web/login", status_code=302)
 
     try:
-        department = Department(
-            name=name,
-            description=description
-        )
+        logger.info(f"Запрос на добавление департамента '{name}' от пользователя: {current_user.username}")
 
-        db.add(department)
-        await db.commit()
-        await db.refresh(department)
-        logger.info("отдел добавлен")
+        department_data = DepartmentCreate(name=name, description=description)
 
+        service = DepartmentService(db)
+        result = await service.create_department(department_data)
+
+        if result.error:
+            logger.warning(f"Ошибка при добавлении департамента '{name}': {result.message}")
+            return RedirectResponse(
+                url=f"/web/edit/departments?error={result.message}",
+                status_code=303
+            )
+
+        logger.info(f"Успешно добавлен департамент: {name} (ID: {result.payload.id})")
         return RedirectResponse(url="/web/edit/departments", status_code=303)
+
     except Exception as e:
-        logger.error("ошибка в добавление")
-        await db.rollback()
-        return RedirectResponse(url="/web/edit/departments?error=" + str(e), status_code=303)
+        logger.error(f"Неожиданная ошибка при добавлении департамента '{name}': {str(e)}")
+        return RedirectResponse(
+            url=f"/web/edit/departments?error=Unexpected error: {str(e)}",
+            status_code=303
+        )
 
 
 @router.post("/edit/departments/delete/{department_id}")
@@ -234,36 +273,31 @@ async def web_delete_department(
         current_user=Depends(require_admin)
 ):
     if current_user is None:
-        logger.warning("Not logged in")
+        logger.warning("Попытка удаления департамента без авторизации")
         return RedirectResponse(url="/web/login", status_code=302)
 
     try:
-        result = await db.execute(
-            select(func.count(Employee.id))
-            .where(Employee.department_id == department_id)
-        )
-        emp_count = result.scalar()
+        logger.info(f"Запрос на удаление департамента ID {department_id} от пользователя: {current_user.username}")
 
-        if emp_count > 0:
+        service = DepartmentService(db)
+        result = await service.delete_department(department_id)
+
+        if result.error:
+            logger.warning(f"Ошибка при удалении департамента ID {department_id}: {result.message}")
             return RedirectResponse(
-                url=f"/web/edit/departments?error=Cannot delete department with {emp_count} employees",
+                url=f"/web/edit/departments?error={result.message}",
                 status_code=303
             )
 
-        result = await db.execute(select(Department).where(Department.id == department_id))
-        department = result.scalar_one_or_none()
-
-        if department:
-            await db.delete(department)
-            await db.commit()
-            logger.info("отдел удален")
-
+        logger.info(f"Успешно удален департамент ID {department_id}")
         return RedirectResponse(url="/web/edit/departments", status_code=303)
-    except Exception as e:
-        logger.error("ошибка в удаление отдела")
-        await db.rollback()
-        return RedirectResponse(url="/web/edit/departments?error=" + str(e), status_code=303)
 
+    except Exception as e:
+        logger.error(f"Неожиданная ошибка при удалении департамента ID {department_id}: {str(e)}")
+        return RedirectResponse(
+            url=f"/web/edit/departments?error=Unexpected error: {str(e)}",
+            status_code=303
+        )
 
 @router.get("/edit/positions", response_class=HTMLResponse)
 async def web_edit_positions(
@@ -304,77 +338,6 @@ async def web_edit_positions(
             "positions": positions
         }
     )
-
-
-@router.post("/edit/positions/add")
-async def web_add_position(
-        request: Request,
-        title: str = Form(...),
-        description: str = Form(None),
-        base_salary: float = Form(...),
-        db: AsyncSession = Depends(get_db),
-        current_user=Depends(require_admin)
-):
-    if current_user is None:
-        logger.warning("Not logged in")
-        return RedirectResponse(url="/web/login", status_code=302)
-
-    try:
-        position = Position(
-            title=title,
-            description=description,
-            base_salary=base_salary
-        )
-
-        db.add(position)
-        await db.commit()
-        await db.refresh(position)
-        logger.info("должность добавлена")
-
-        return RedirectResponse(url="/web/edit/positions", status_code=303)
-    except Exception as e:
-        logger.error(e)
-        await db.rollback()
-        return RedirectResponse(url="/web/edit/positions?error=" + str(e), status_code=303)
-
-
-@router.post("/edit/positions/delete/{position_id}")
-async def web_delete_position(
-        position_id: int,
-        request: Request,
-        db: AsyncSession = Depends(get_db),
-        current_user=Depends(require_admin)
-):
-    if current_user is None:
-        logger.warning("Not logged in")
-        return RedirectResponse(url="/web/login", status_code=302)
-
-    try:
-        result = await db.execute(
-            select(func.count(Employee.id))
-            .where(Employee.position_id == position_id)
-        )
-        emp_count = result.scalar()
-
-        if emp_count > 0:
-            return RedirectResponse(
-                url=f"/web/edit/positions?error=Cannot delete position with {emp_count} employees",
-                status_code=303
-            )
-
-        result = await db.execute(select(Position).where(Position.id == position_id))
-        position = result.scalar_one_or_none()
-
-        if position:
-            await db.delete(position)
-            await db.commit()
-            logger.info("должность удалена")
-
-        return RedirectResponse(url="/web/edit/positions", status_code=303)
-    except Exception as e:
-        logger.error(e)
-        await db.rollback()
-        return RedirectResponse(url="/web/edit/positions?error=" + str(e), status_code=303)
 
 
 @router.post("/edit/employees/update/{employee_id}")
@@ -461,41 +424,120 @@ async def web_update_department(
         await db.rollback()
         return RedirectResponse(url=f"/web/edit/departments?error={str(e)}", status_code=303)
 
-
-@router.post("/edit/positions/update/{position_id}")
-async def web_update_position(
-        position_id: int,
-        request: Request,
-        title: str = Form(...),
-        description: str = Form(None),
-        base_salary: float = Form(...),
-        db: AsyncSession = Depends(get_db),
-        current_user=Depends(require_admin)
+@router.post("/edit/positions/add")
+async def web_add_position(
+    request: Request,
+    title: str = Form(...),
+    description: str = Form(None),
+    base_salary: float = Form(...),
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_admin)
 ):
     if current_user is None:
         logger.warning("Not logged in")
         return RedirectResponse(url="/web/login", status_code=302)
 
     try:
-        result = await db.execute(
-            select(Position).where(Position.id == position_id)
+        # Создаем объект PositionCreate для сервиса
+        position_data = PositionCreate(
+            title=title,
+            description=description,
+            base_salary=base_salary
         )
-        position = result.scalar_one_or_none()
 
-        if not position:
-            return RedirectResponse(url="/web/edit/positions?error=Position not found", status_code=303)
+        # Используем PositionService для создания должности
+        service = PositionService(db)
+        result = await service.create_position(position_data)
 
-        position.title = title
-        position.description = description
-        position.base_salary = base_salary
+        if result.error:
+            logger.warning(f"Ошибка при добавлении должности '{title}': {result.message}")
+            return RedirectResponse(
+                url=f"/web/edit/positions?error={result.message}",
+                status_code=303
+            )
 
-        await db.commit()
-        await db.refresh(position)
-        logger.info("обновлена информация о должности")
-
+        logger.info(f"Должность добавлена: {title} (ID: {result.payload.id})")
         return RedirectResponse(url="/web/edit/positions", status_code=303)
 
     except Exception as e:
-        logger.error(e)
-        await db.rollback()
-        return RedirectResponse(url=f"/web/edit/positions?error={str(e)}", status_code=303)
+        logger.error(f"Неожиданная ошибка при добавлении должности '{title}': {str(e)}")
+        return RedirectResponse(
+            url=f"/web/edit/positions?error=Unexpected error: {str(e)}",
+            status_code=303
+        )
+
+@router.post("/edit/positions/update/{position_id}")
+async def web_update_position(
+    position_id: int,
+    request: Request,
+    title: str = Form(...),
+    description: str = Form(None),
+    base_salary: float = Form(...),
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_admin)
+):
+    if current_user is None:
+        logger.warning("Not logged in")
+        return RedirectResponse(url="/web/login", status_code=302)
+
+    try:
+        # Создаем объект PositionUpdate для сервиса
+        position_data = PositionUpdate(
+            title=title,
+            description=description,
+            base_salary=base_salary
+        )
+
+        # Используем PositionService для обновления должности
+        service = PositionService(db)
+        result = await service.update_position(position_id, position_data)
+
+        if result.error:
+            logger.warning(f"Ошибка при обновлении должности ID {position_id}: {result.message}")
+            return RedirectResponse(
+                url=f"/web/edit/positions?error={result.message}",
+                status_code=303
+            )
+
+        logger.info(f"Должность обновлена: {title} (ID: {position_id})")
+        return RedirectResponse(url="/web/edit/positions", status_code=303)
+
+    except Exception as e:
+        logger.error(f"Неожиданная ошибка при обновлении должности ID {position_id}: {str(e)}")
+        return RedirectResponse(
+            url=f"/web/edit/positions?error=Unexpected error: {str(e)}",
+            status_code=303
+        )
+
+@router.post("/edit/positions/delete/{position_id}")
+async def web_delete_position(
+    position_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_admin)
+):
+    if current_user is None:
+        logger.warning("Not logged in")
+        return RedirectResponse(url="/web/login", status_code=302)
+
+    try:
+        # Используем PositionService для удаления должности
+        service = PositionService(db)
+        result = await service.delete_position(position_id)
+
+        if result.error:
+            logger.warning(f"Ошибка при удалении должности ID {position_id}: {result.message}")
+            return RedirectResponse(
+                url=f"/web/edit/positions?error={result.message}",
+                status_code=303
+            )
+
+        logger.info(f"Должность удалена: ID {position_id}")
+        return RedirectResponse(url="/web/edit/positions", status_code=303)
+
+    except Exception as e:
+        logger.error(f"Неожиданная ошибка при удалении должности ID {position_id}: {str(e)}")
+        return RedirectResponse(
+            url=f"/web/edit/positions?error=Unexpected error: {str(e)}",
+            status_code=303
+        )

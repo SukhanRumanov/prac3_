@@ -13,6 +13,7 @@ from app.schemas.base import DefaultResponse
 from fastapi.responses import RedirectResponse
 from app.core.config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
 from app.logger.logger import setup_logger
+from app.schemas.auth import Token
 
 logger = setup_logger(__name__)
 
@@ -130,16 +131,28 @@ async def get_current_user(
 ) -> Optional[User]:
     try:
         logger.debug("Получение текущего пользователя из токена")
-        token = request.cookies.get("access_token")
+
+        token = None
+
+        authorization = request.headers.get("Authorization")
+        if authorization and authorization.startswith("Bearer "):
+            token = authorization.replace("Bearer ", "")
+            logger.debug("Токен получен из Authorization header")
+
         if not token:
-            logger.debug("Токен не найден в cookies")
+            token = request.cookies.get("access_token")
+            if token:
+                logger.debug("Токен получен из cookies")
+
+        if not token:
+            logger.debug("Токен не найден")
             return None
 
         payload = verify_token(token)
         username = payload.get("username")
 
         if not username:
-            logger.warning("Токен не содержит username")
+            logger.warning("Токен не содержит username/sub")
             return None
 
         result = await db.execute(select(User).where(User.username == username))
@@ -156,7 +169,7 @@ async def get_current_user(
         logger.debug(f"Текущий пользователь получен: {username}")
         return user
 
-    except (JWTError, HTTPException) as e:
+    except JWTError as e:
         logger.warning(f"Ошибка JWT при получении текущего пользователя: {str(e)}")
         return None
     except Exception as e:
@@ -236,8 +249,9 @@ def create_user_access_token(user: User) -> str:
         raise
 
 
-async def login_user(db: AsyncSession, username: str, password: str) -> Union[User, DefaultResponse]:
+async def login_user(db: AsyncSession, username: str, password: str) -> Union[Token, DefaultResponse]:
     logger.info(f"Начало процесса логина для пользователя: {username}")
+
     user = await authenticate_user(db, username, password)
 
     if isinstance(user, DefaultResponse):
@@ -245,9 +259,9 @@ async def login_user(db: AsyncSession, username: str, password: str) -> Union[Us
         return user
 
     access_token = create_user_access_token(user)
-    logger.info(f"Логин успешен для пользователя: {username}")
-    return user
 
+    logger.info(f"Логин успешен для пользователя: {username}")
+    return Token(access_token=access_token, token_type="bearer")
 
 def create_login_response(user: User, redirect_url: str = "/web/") -> RedirectResponse:
     try:
@@ -281,3 +295,12 @@ async def logout_user() -> RedirectResponse:
     except Exception as e:
         logger.error(f"Ошибка при выходе пользователя: {str(e)}")
         raise
+
+
+async def get_current_active_user(current_user: User = Depends(get_current_user)) -> User:
+    if current_user is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Not authenticated"
+        )
+    return current_user

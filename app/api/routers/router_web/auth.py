@@ -16,6 +16,7 @@ from app.core.security import (
 from app.schemas.base import DefaultResponse
 
 from app.logger.logger import setup_logger
+from app.services.auth_service import login_user
 
 logger = setup_logger(__name__)
 
@@ -31,38 +32,34 @@ async def login_page(request: Request):
 
 @router.post("/login")
 async def login(
-        request: Request,
-        username: str = Form(...),
-        password: str = Form(...),
-        db: AsyncSession = Depends(get_db)
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    db: AsyncSession = Depends(get_db)
 ):
     try:
         logger.info(f"Попытка входа пользователя: {username}")
 
-        auth_result = await authenticate_user(db, username, password)
+        result = await login_user(db, username, password)
 
-        if isinstance(auth_result, DefaultResponse):
-            logger.warning(f"Неудачная попытка входа пользователя {username}: {auth_result.message}")
+        if isinstance(result, DefaultResponse):
+            logger.warning(f"Неудачная попытка входа пользователя {username}: {result.message}")
             return templates.TemplateResponse("login.html", {
                 "request": request,
-                "error": auth_result.message
+                "error": result.message
             })
-
-        user = auth_result
-
-        access_token = create_user_access_token(user)
 
         response = RedirectResponse(url="/web/", status_code=302)
         response.set_cookie(
             key="access_token",
-            value=access_token,
+            value=result.access_token,
             httponly=True,
             max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
             secure=False,
             samesite="lax"
         )
 
-        logger.info(f"Успешный вход пользователя: {username} (ID: {user.id})")
+        logger.info(f"Успешный вход пользователя: {username}")
         return response
 
     except Exception as e:
@@ -71,7 +68,6 @@ async def login(
             "request": request,
             "error": "Login error occurred"
         })
-
 
 @router.get("/register")
 async def register_page(request: Request):

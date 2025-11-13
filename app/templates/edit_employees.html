@@ -40,25 +40,22 @@
 
         <p>Отдел</p>
         <select name="department_id">
-            <option value="">Отдел</option>
             {% for dept in departments %}
-            <option value="{{ dept.id }}">{{ dept.name }}</option>
+            <option value="{{ dept.id }}" {% if loop.first %}selected{% endif %}>{{ dept.name }}</option>
             {% endfor %}
         </select>
 
         <p>Должность</p>
         <select name="position_id">
-            <option value="">Должность</option>
             {% for pos in positions %}
-            <option value="{{ pos.id }}">{{ pos.title }}</option>
+            <option value="{{ pos.id }}" {% if loop.first %}selected{% endif %}>{{ pos.title }}</option>
             {% endfor %}
         </select>
 
         <p>Статус (например, «работает», «уволен» и т.п.)</p>
         <select name="status_id" required>
-            <option value="">Статус</option>
             {% for status in statuses %}
-            <option value="{{ status.id }}">{{ status.name }}</option>
+            <option value="{{ status.id }}" {% if loop.first %}selected{% endif %}>{{ status.name }}</option>
             {% endfor %}
         </select>
 
@@ -101,9 +98,8 @@
             <td>
                 <p>Отдел</p>
                 <select name="department_id">
-                    <option value="">--</option>
                     {% for dept in departments %}
-                    <option value="{{ dept.id }}" {% if employee.department_id == dept.id %}selected{% endif %}>
+                    <option value="{{ dept.id }}" {% if employee.department_id == dept.id %}selected{% elif not employee.department_id and loop.first %}selected{% endif %}>
                         {{ dept.name }}
                     </option>
                     {% endfor %}
@@ -112,9 +108,8 @@
             <td>
                 <p>Должность</p>
                 <select name="position_id">
-                    <option value="">--</option>
                     {% for pos in positions %}
-                    <option value="{{ pos.id }}" {% if employee.position_id == pos.id %}selected{% endif %}>
+                    <option value="{{ pos.id }}" {% if employee.position_id == pos.id %}selected{% elif not employee.position_id and loop.first %}selected{% endif %}>
                         {{ pos.title }}
                     </option>
                     {% endfor %}
@@ -124,7 +119,7 @@
                 <p>Статус</p>
                 <select name="status_id" required>
                     {% for status in statuses %}
-                    <option value="{{ status.id }}" {% if employee.status_id == status.id %}selected{% endif %}>
+                    <option value="{{ status.id }}" {% if employee.status_id == status.id %}selected{% elif not employee.status_id and loop.first %}selected{% endif %}>
                         {{ status.name }}
                     </option>
                     {% endfor %}

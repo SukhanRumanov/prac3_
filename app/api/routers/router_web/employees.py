@@ -18,6 +18,8 @@ from app.schemas.employee import EmployeeSchema, EmployeeFilter, EmployeeListRes
 from fastapi import status
 templates = Jinja2Templates(directory="app/templates")
 
+from app.services.employee_service import EmployeeService
+
 router = APIRouter()
 
 from app.logger.logger import setup_logger
@@ -26,63 +28,36 @@ logger = setup_logger(__name__)
 
 @router.get("/employees")
 async def web_employees(
-        request: Request,
-        db: AsyncSession = Depends(get_db),
-        current_user=Depends(get_current_user)
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user)
 ):
     if current_user is None:
         logger.warning("Not logged in")
         return RedirectResponse(url="/web/login", status_code=status.HTTP_302_FOUND)
 
-    result = await db.execute(select(Employee))
-    employees = result.scalars().all()
+    try:
+        service = EmployeeService(db)
+        employees_data = await service.get_employees_for_web()
 
-    employee_data = []
-    for emp in employees:
-        department_name = None
-        if emp.department_id:
-            dept_result = await db.execute(select(Department).where(Department.id == emp.department_id))
-            department = dept_result.scalar_one_or_none()
-            department_name = department.name if department else None
+        logger.info(f"Успешно выведено {len(employees_data)} сотрудников через сервис")
 
-        position_title = None
-        if emp.position_id:
-            pos_result = await db.execute(select(Position).where(Position.id == emp.position_id))
-            position = pos_result.scalar_one_or_none()
-            position_title = position.title if position else None
-
-        employee_schema = EmployeeSchema.from_orm(emp)
-
-        employee_data.append({
-            "id": employee_schema.id,
-            "first_name": employee_schema.first_name,
-            "last_name": employee_schema.last_name,
-            "middle_name": employee_schema.middle_name,
-            "birth_date": employee_schema.birth_date,
-            "email": employee_schema.email,
-            "phone": employee_schema.phone,
-            "hire_date": employee_schema.hire_date,
-            "salary": float(employee_schema.salary),
-            "rate": employee_schema.rate,
-            "department_id": employee_schema.department_id,
-            "position_id": employee_schema.position_id,
-            "status_id": employee_schema.status_id,
-            "address": employee_schema.address,
-            "department_name": department_name,
-            "position_title": position_title,
-            "full_name": f"{employee_schema.last_name} {employee_schema.first_name} {employee_schema.middle_name or ''}".strip(),
-            "age": (date.today() - employee_schema.birth_date).days // 365,
-            "work_experience": (date.today() - employee_schema.hire_date).days // 365
+        return templates.TemplateResponse("employees.html", {
+            "request": request,
+            "employees": employees_data,
+            "current_user": current_user,
+            "is_admin": current_user.is_superuser
         })
-        logger.info("выведены все пользователи")
 
-    return templates.TemplateResponse("employees.html", {
-        "request": request,
-        "employees": employee_data,
-        "current_user": current_user,
-        "is_admin": current_user.is_superuser
-    })
-
+    except Exception as e:
+        logger.error(f"Ошибка при получении сотрудников для веб-интерфейса: {str(e)}")
+        return templates.TemplateResponse("employees.html", {
+            "request": request,
+            "employees": [],
+            "current_user": current_user,
+            "is_admin": current_user.is_superuser,
+            "error": "Ошибка при загрузке данных сотрудников"
+        })
 @router.get("/employees/filter")
 async def web_employees_filter(
         request: Request,
